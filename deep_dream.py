@@ -10,6 +10,10 @@ import os
 import tqdm
 import scipy.ndimage as nd
 from utils import deprocess, preprocess, clip
+from pytorchcv.model_provider import get_model as ptcv_get_model
+
+def resnet18(pretrained=True):
+    return ptcv_get_model("resnet18", pretrained=True).features
 
 
 def dream(image, model, iterations, lr):
@@ -56,25 +60,26 @@ def deep_dream(image, model, iterations, lr, octave_scale, num_octaves):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_image", type=str, default="images/supermarket.jpg", help="path to input image")
-    parser.add_argument("--iterations", default=20, help="number of gradient ascent steps per octave")
+    parser.add_argument("--iterations", default=20, type=int, help="number of gradient ascent steps per octave")
     parser.add_argument("--at_layer", default=27, type=int, help="layer at which we modify image to maximize outputs")
-    parser.add_argument("--lr", default=0.01, help="learning rate")
-    parser.add_argument("--octave_scale", default=1.4, help="image scale between octaves")
-    parser.add_argument("--num_octaves", default=10, help="number of octaves")
+    parser.add_argument("--lr", default=0.01, type=float, help="learning rate")
+    parser.add_argument("--octave_scale", default=1.4, type=float, help="image scale between octaves")
+    parser.add_argument("--num_octaves", default=10, type=int, help="number of octaves")
     args = parser.parse_args()
 
     # Load image
     image = Image.open(args.input_image)
 
-    # Define the model
-    network = models.vgg19(pretrained=True)
+    #%% Define the model
+    # network = models.vgg19(pretrained=True)
+    network = ptcv_get_model("resnet50", pretrained=True)
     layers = list(network.features.children())
     model = nn.Sequential(*layers[: (args.at_layer + 1)])
     if torch.cuda.is_available:
         model = model.cuda()
     print(network)
 
-    # Extract deep dream image
+    #%% Extract deep dream image
     dreamed_image = deep_dream(
         image,
         model,
@@ -87,6 +92,10 @@ if __name__ == "__main__":
     # Save and plot image
     os.makedirs("outputs", exist_ok=True)
     filename = args.input_image.split("/")[-1]
+    # needed to fight rounding errors
+    print("before clipping: min", np.min(dreamed_image), "max", np.min(dreamed_image))
+    np.clip(dreamed_image, a_min=0.0, a_max=1.0, out=dreamed_image)
+    print("after clipping: min", np.min(dreamed_image), "max", np.min(dreamed_image))
     plt.figure(figsize=(20, 20))
     plt.imshow(dreamed_image)
     plt.imsave(f"outputs/output_{filename}", dreamed_image)
